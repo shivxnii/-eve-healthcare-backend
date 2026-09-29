@@ -1,0 +1,57 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://eve:eve@db:5432/eve_healthcare
+      SECRET_KEY: change-me-in-compose
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      RATE_LIMIT: 100/minute
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+  worker:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://eve:eve@db:5432/eve_healthcare
+      SECRET_KEY: change-me-in-compose
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eve_healthcare
+      POSTGRES_USER: eve
+      POSTGRES_PASSWORD: eve
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eve -d eve_healthcare"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+volumes:
+  postgres_data:
+  redis_data:
